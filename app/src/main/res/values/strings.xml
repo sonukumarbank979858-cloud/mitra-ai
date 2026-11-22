@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">मित्र AI</string>
+    <string name="a11y_desc">मित्र AI आपकी आवाज़ के कहने पर स्क्रीन पढ़ता है, बटन दबाता है और WhatsApp पर Send दबाता है। पेमेंट, UPI और बैंकिंग ऐप्स में यह कभी कुछ नहीं करता।</string>
+</resources>
