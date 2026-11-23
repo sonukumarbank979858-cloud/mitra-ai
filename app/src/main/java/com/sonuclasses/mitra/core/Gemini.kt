@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 /** Plain REST calls to the Gemini API (text chat, function calling, vision, search grounding). */
 object Gemini {
     const val BASE = "https://generativelanguage.googleapis.com/v1beta"
-    val TEXT_MODELS = listOf("gemini-flash-latest", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite")
+    val TEXT_MODELS = listOf("gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3-flash-preview", "gemini-3.6-flash", "gemini-flash-latest")
 
     val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -48,8 +48,9 @@ object Gemini {
         var last: Exception? = null
         for (m in TEXT_MODELS) {
             try { return@withContext post(m, body, key) } catch (e: ApiError) {
-                last = e
-                if (e.code == 401 || e.code == 403 || e.code == 429) throw e
+                // keep the most useful error (a 404 for a retired model is the least useful)
+                if (last !is ApiError || (last as ApiError).code == 404) last = e
+                if (e.code == 401 || e.code == 403) throw e
             } catch (e: Exception) { last = e }
         }
         throw last ?: Exception("Gemini error")
