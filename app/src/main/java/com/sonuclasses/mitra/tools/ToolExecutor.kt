@@ -80,6 +80,8 @@ object ToolExecutor {
                     if (app.isEmpty()) null else openApp(ctx, app)
                 }
             }
+            "web_task" -> WebAgent.run(ctx, args.optString("goal"), args.optString("url").trim().ifEmpty { null },
+                args.optBoolean("confirmed", false), Prefs.facts.joinToString("; "))
             "remember_fact" -> { Prefs.addFact(args.optString("fact")); ok("याद कर लिया") }
             else -> err("अनजान tool: $name")
         }

@@ -48,6 +48,15 @@ action इनमें से एक:
         val svc = MitraAccessibilityService.instance
             ?: return err("Accessibility चालू नहीं है — 'अनुमतियाँ' स्क्रीन से मित्र AI की Accessibility चालू करें")
         openApp()?.let { if (it.optString("status") == "error") return it; delay(2500) }
+        MitraAccessibilityService.busy = true
+        withContext(Dispatchers.Main) { svc.rich(true) }
+        try { return loop(svc, goal, confirmed, facts) } finally {
+            MitraAccessibilityService.busy = false
+            withContext(Dispatchers.Main) { svc.rich(false) }
+        }
+    }
+
+    private suspend fun loop(svc: MitraAccessibilityService, goal: String, confirmed: Boolean, facts: String): JSONObject {
 
         val history = ArrayList<String>()
         var lastScreen = ""

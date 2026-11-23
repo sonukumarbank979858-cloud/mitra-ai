@@ -59,6 +59,16 @@
         </activity>
 
         <activity
+            android:name=".ui.BrowserActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.sonuclasses.mitra.browser"
+            android:label="मित्र ब्राउज़र"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Mitra" />
+
+        <activity
             android:name=".ui.CameraCaptureActivity"
             android:exported="false"
             android:excludeFromRecents="true"

@@ -155,6 +155,7 @@ fun HomeScreen(go: (Screen) -> Unit, onMic: () -> Unit) {
 
     Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF0D0B1F), MC.Bg))).statusBarsPadding().navigationBarsPadding()) {
         TopBar(title = "$name AI", actions = {
+            IconText("🌐") { ctx.startActivity(android.content.Intent(ctx, BrowserActivity::class.java)) }
             IconText("💬") { go(Screen.CHAT) }
             IconText("🛡") { go(Screen.PERMS) }
             IconText("⚙") { go(Screen.SETTINGS) }

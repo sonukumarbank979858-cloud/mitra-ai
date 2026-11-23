@@ -21,7 +21,26 @@ import com.sonuclasses.mitra.tools.Safety
 /** Reads the screen, taps by text, scrolls, and presses WhatsApp's Send button after Mitra opens a chat. */
 class MitraAccessibilityService : AccessibilityService() {
 
-    override fun onServiceConnected() { instance = this }
+    override fun onServiceConnected() { instance = this; rich(false) }
+
+    /** Light mode by default so the phone never slows down; full detail only while Mitra is working. */
+    fun rich(on: Boolean) {
+        try {
+            val info = serviceInfo ?: return
+            if (on) {
+                info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                info.flags = info.flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
+                    android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+                    android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+                info.notificationTimeout = 200
+            } else {
+                info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                info.flags = android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+                info.notificationTimeout = 500
+            }
+            serviceInfo = info
+        } catch (_: Exception) {}
+    }
 
     override fun onDestroy() { if (instance === this) instance = null; super.onDestroy() }
 
@@ -290,11 +309,16 @@ class MitraAccessibilityService : AccessibilityService() {
     companion object {
         @Volatile var instance: MitraAccessibilityService? = null
         @Volatile private var waSendUntil = 0L
+        @Volatile var busy = false
 
         /** Next WhatsApp chat that opens within 15 s gets its Send button pressed once. */
         fun armWhatsAppSend() {
             waSendUntil = System.currentTimeMillis() + 15_000
-            instance?.let { s -> s.handler.postDelayed(s.waTry, 1500); s.handler.postDelayed(s.waTry, 3000) }
+            instance?.let { s ->
+                s.rich(true)
+                s.handler.postDelayed(s.waTry, 1500); s.handler.postDelayed(s.waTry, 3000)
+                s.handler.postDelayed({ if (waSendUntil < System.currentTimeMillis() && !busy) s.rich(false) }, 16_000)
+            }
         }
     }
 }
