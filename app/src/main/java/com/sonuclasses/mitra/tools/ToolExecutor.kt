@@ -62,9 +62,24 @@ object ToolExecutor {
             "open_settings" -> openSettings(ctx, args.optString("panel"))
             "take_photo" -> takePhoto(ctx)
             "describe_camera" -> describeCamera(ctx, args.optString("question"))
-            "play_youtube" -> youtube(ctx, args.optString("query"))
+            "play_youtube" -> {
+                val q = args.optString("query")
+                val opened = youtube(ctx, q)
+                if (opened.optString("status") != "ok" || MitraAccessibilityService.instance == null) opened
+                else {
+                    kotlinx.coroutines.delay(3000)
+                    AppAgent.run("YouTube के सर्च नतीजों में '$q' से सबसे ज़्यादा मिलता पहला असली वीडियो (विज्ञापन/Ad या Shorts नहीं, जब तक यूज़र ने Shorts न माँगा हो) टैप करके चलाओ। वीडियो चलने लगे तो done।",
+                        true, "") { null }
+                }
+            }
             "web_search" -> ok(Gemini.searchAnswer(args.optString("query")))
             "screen_action" -> screen(args.optString("action"), args.optString("text"))
+            "app_task" -> {
+                val app = args.optString("app").trim()
+                AppAgent.run(args.optString("goal"), args.optBoolean("confirmed", false), Prefs.facts.joinToString("; ")) {
+                    if (app.isEmpty()) null else openApp(ctx, app)
+                }
+            }
             "remember_fact" -> { Prefs.addFact(args.optString("fact")); ok("याद कर लिया") }
             else -> err("अनजान tool: $name")
         }

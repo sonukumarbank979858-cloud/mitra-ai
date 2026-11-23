@@ -53,5 +53,9 @@ object ToolDefs {
             mapOf("query" to s("खोज")), listOf("query")))
         .put(fn("screen_action", "Accessibility से अभी खुली स्क्रीन पर काम करो: read (दिख रहा टेक्स्ट पढ़ो), click (टेक्स्ट वाले बटन पर टैप), scroll_down, scroll_up, back, home, type (फ़ोकस वाले बॉक्स में टेक्स्ट लिखो)।",
             mapOf("action" to s("read, click, scroll_down, scroll_up, back, home, type"), "text" to s("click के लिए बटन का टेक्स्ट, type के लिए लिखने वाला टेक्स्ट")), listOf("action")))
+        .put(fn("app_task", "किसी भी ऐप के अंदर कई कदमों वाला काम खुद स्क्रीन देखकर टैप/टाइप/स्क्रॉल करते हुए पूरा करो: जैसे YouTube पर वीडियो खोजकर चलाना, WhatsApp में किसी को मैसेज लिखकर भेजना, फ़ॉर्म भरना, ऐप की सेटिंग बदलना।",
+            mapOf("app" to s("कौन सा ऐप खोलना है (नाम), जैसे YouTube, WhatsApp, Chrome। पहले से खुले ऐप में आगे बढ़ना हो तो खाली छोड़ो"),
+                "goal" to s("पूरा काम साफ़ शब्दों में, जो लिखना/भरना है उसके साथ, जैसे: 'Rahul की चैट खोलकर लिखो: मैं 5 बजे आऊँगा, और भेजो'"),
+                "confirmed" to CONFIRM), listOf("goal")))
         .put(fn("remember_fact", "यूज़र के बारे में कोई स्थायी बात याद रखो।", mapOf("fact" to s("याद रखने वाली बात, छोटे वाक्य में")), listOf("fact")))
 }

@@ -1,6 +1,16 @@
 package com.sonuclasses.mitra.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.graphics.Bitmap
+import android.graphics.Path
+import android.graphics.Rect
+import android.os.Build
+import android.view.Display
+import java.io.ByteArrayOutputStream
+import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -102,6 +112,142 @@ class MitraAccessibilityService : AccessibilityService() {
         val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: findNode(root) { it.isEditable && it.isVisibleToUser } ?: return false
         val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
         return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+
+    // ---------- numbered screen snapshot for the in-app agent ----------
+    private val snapNodes = ArrayList<AccessibilityNodeInfo>()
+
+    /** Lists visible elements as "[id] kind "label" …" lines; ids are valid until the next snapshot. */
+    fun snapshot(): String {
+        snapNodes.clear()
+        val root = rootInActiveWindow ?: return ""
+        if (Safety.isBlockedPackage(root.packageName?.toString())) return ""
+        val sw = resources.displayMetrics.widthPixels
+        val sh = resources.displayMetrics.heightPixels
+        val sb = StringBuilder()
+        val r = Rect()
+        fun walk(n: AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || depth > 45 || snapNodes.size >= 140) return
+            if (n.isVisibleToUser) {
+                val t = n.text?.toString()?.trim()?.replace('\n', ' ').orEmpty()
+                val d = n.contentDescription?.toString()?.trim()?.replace('\n', ' ').orEmpty()
+                val h = if (Build.VERSION.SDK_INT >= 26) n.hintText?.toString()?.trim().orEmpty() else ""
+                val cls = n.className?.toString()?.substringAfterLast('.') ?: ""
+                val interactive = n.isClickable || n.isLongClickable || n.isEditable || n.isCheckable || n.isScrollable
+                if (interactive || t.isNotEmpty() || d.isNotEmpty()) {
+                    n.getBoundsInScreen(r)
+                    if (r.width() > 2 && r.height() > 2 && r.right > 0 && r.bottom > 0 && r.left < sw && r.top < sh) {
+                        val kind = when {
+                            n.isEditable -> "लिखने-का-बॉक्स"
+                            n.isCheckable -> if (n.isChecked) "चेकबॉक्स(✓)" else "चेकबॉक्स( )"
+                            n.isScrollable && !n.isClickable -> "स्क्रॉल-एरिया"
+                            n.isClickable || n.isLongClickable -> "बटन"
+                            else -> "टेक्स्ट"
+                        }
+                        val label = buildString {
+                            if (t.isNotEmpty()) append('"').append(t.take(80)).append('"')
+                            if (d.isNotEmpty() && d != t) append(" desc=\"").append(d.take(60)).append('"')
+                            if (h.isNotEmpty() && h != t) append(" hint=\"").append(h.take(40)).append('"')
+                            if (isEmpty()) append(cls)
+                        }
+                        snapNodes.add(n)
+                        sb.append('[').append(snapNodes.size - 1).append("] ").append(kind).append(' ').append(label)
+                            .append(" @").append(r.centerX() * 100 / sw).append(',').append(r.centerY() * 100 / sh)
+                            .append(if (n.isFocused) " (फ़ोकस)" else "").append('\n')
+                    }
+                }
+            }
+            for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
+        }
+        walk(root, 0)
+        return sb.toString()
+    }
+
+    private fun node(id: Int): AccessibilityNodeInfo? = snapNodes.getOrNull(id)
+
+    fun tapId(id: Int, long: Boolean = false): Boolean {
+        val n = node(id) ?: return false
+        if (!long && clickNode(n)) return true
+        if (long) {
+            var p: AccessibilityNodeInfo? = n; var hops = 0
+            while (p != null && hops < 6) { if (p.isLongClickable) return p.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK); p = p.parent; hops++ }
+        }
+        val r = Rect(); n.getBoundsInScreen(r)
+        return gesture(r.exactCenterX(), r.exactCenterY(), r.exactCenterX(), r.exactCenterY(), if (long) 700 else 60)
+    }
+
+    fun typeId(id: Int, text: String): Boolean {
+        val n = (if (id >= 0) node(id) else null)
+            ?: rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            ?: rootInActiveWindow?.let { findNode(it) { x -> x.isEditable && x.isVisibleToUser } }
+            ?: return false
+        var target: AccessibilityNodeInfo = n
+        if (!n.isEditable) findNode(n) { it.isEditable }?.let { target = it }
+        target.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+        return target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+
+    /** Presses the keyboard's Enter/Search/Go key on the focused box. */
+    fun pressEnter(): Boolean {
+        val f = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        if (Build.VERSION.SDK_INT >= 30) {
+            return f.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+        }
+        return false
+    }
+
+    fun tapPercent(xp: Int, yp: Int): Boolean {
+        val dm = resources.displayMetrics
+        val x = dm.widthPixels * xp.coerceIn(0, 100) / 100f
+        val y = dm.heightPixels * yp.coerceIn(0, 100) / 100f
+        return gesture(x, y, x, y, 60)
+    }
+
+    fun swipe(dir: String): Boolean {
+        val dm = resources.displayMetrics
+        val w = dm.widthPixels.toFloat(); val h = dm.heightPixels.toFloat()
+        return when (dir) {
+            "up" -> gesture(w / 2, h * 0.75f, w / 2, h * 0.3f, 350)     // content moves up = scroll down
+            "down" -> gesture(w / 2, h * 0.3f, w / 2, h * 0.75f, 350)
+            "left" -> gesture(w * 0.85f, h / 2, w * 0.15f, h / 2, 300)
+            "right" -> gesture(w * 0.15f, h / 2, w * 0.85f, h / 2, 300)
+            else -> false
+        }
+    }
+
+    private fun gesture(x1: Float, y1: Float, x2: Float, y2: Float, ms: Long): Boolean {
+        val path = Path().apply { moveTo(x1.coerceAtLeast(1f), y1.coerceAtLeast(1f)); lineTo(x2.coerceAtLeast(1f), y2.coerceAtLeast(1f)) }
+        val g = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, ms)).build()
+        return dispatchGesture(g, null, null)
+    }
+
+    /** Small JPEG of the screen (Android 11+), or null. */
+    suspend fun screenshotJpeg(): ByteArray? {
+        if (Build.VERSION.SDK_INT < 30) return null
+        return withTimeoutOrNull(4000) {
+            suspendCancellableCoroutine<ByteArray?> { cont ->
+                try {
+                    takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                        override fun onSuccess(res: ScreenshotResult) {
+                            val out = try {
+                                val hw = Bitmap.wrapHardwareBuffer(res.hardwareBuffer, res.colorSpace)
+                                val bmp = hw?.copy(Bitmap.Config.ARGB_8888, false)
+                                res.hardwareBuffer.close()
+                                if (bmp == null) null else {
+                                    val w = 540; val h = (bmp.height * w.toFloat() / bmp.width).toInt()
+                                    val sc = Bitmap.createScaledBitmap(bmp, w, h, true)
+                                    val bo = ByteArrayOutputStream(); sc.compress(Bitmap.CompressFormat.JPEG, 55, bo); bo.toByteArray()
+                                }
+                            } catch (e: Exception) { null }
+                            if (cont.isActive) cont.resume(out)
+                        }
+                        override fun onFailure(errorCode: Int) { if (cont.isActive) cont.resume(null) }
+                    })
+                } catch (e: Exception) { if (cont.isActive) cont.resume(null) }
+            }
+        }
     }
 
     fun back() { performGlobalAction(GLOBAL_ACTION_BACK) }
