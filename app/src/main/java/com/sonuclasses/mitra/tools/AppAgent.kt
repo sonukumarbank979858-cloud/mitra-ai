@@ -39,7 +39,9 @@ action इनमें से एक:
 3. अंतिम Send/भेजें, Submit/जमा करें, Post/पोस्ट, Upload, Delete जैसा बटन दबाने से पहले, अगर confirmed=false है तो need_user से साफ़ पूछो (क्या लिखा/भरा है वह भी बताओ)। confirmed=true हो तो दबा दो।
 4. वीडियो चलाना, सर्च करना, ऐप में घूमना, टेक्स्ट लिखना — इनमें पुष्टि की ज़रूरत नहीं।
 5. अगर वही कदम बार-बार काम न करे तो दूसरा तरीका आज़माओ (tap_xy, scroll, back)। विज्ञापन (Skip/Ad/✕) आए तो बंद करो।
-6. काम पूरा होते ही done।
+6. सर्च करने के लिए (Chrome, YouTube, Play Store आदि) सर्च बॉक्स/सर्च बार/"Search or type URL" वाले तत्व के id पर सीधे type करो — ज़रूरत हो तो वह अपने आप टैप होकर लिखेगा; फिर enter। enter काम न करे तो सुझाव-सूची का पहला नतीजा tap करो।
+7. वेबसाइट के फ़ॉर्म में हर खाने (नाम, मोबाइल, ईमेल…) के लिखने-के-बॉक्स के id पर अलग-अलग type करो; बॉक्स न दिखे तो scroll_down।
+8. काम पूरा होते ही done।
 """.trimIndent()
 
     suspend fun run(goal: String, confirmed: Boolean, facts: String, openApp: suspend () -> JSONObject?): JSONObject {

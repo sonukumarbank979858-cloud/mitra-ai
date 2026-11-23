@@ -106,13 +106,6 @@ class MitraAccessibilityService : AccessibilityService() {
         return node.performAction(if (down) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
     }
 
-    fun typeText(text: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        if (Safety.isBlockedPackage(root.packageName?.toString())) return false
-        val node = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: findNode(root) { it.isEditable && it.isVisibleToUser } ?: return false
-        val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
-        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-    }
 
     // ---------- numbered screen snapshot for the in-app agent ----------
     private val snapNodes = ArrayList<AccessibilityNodeInfo>()
@@ -176,17 +169,58 @@ class MitraAccessibilityService : AccessibilityService() {
         return gesture(r.exactCenterX(), r.exactCenterY(), r.exactCenterX(), r.exactCenterY(), if (long) 700 else 60)
     }
 
-    fun typeId(id: Int, text: String): Boolean {
-        val n = (if (id >= 0) node(id) else null)
-            ?: rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-            ?: rootInActiveWindow?.let { findNode(it) { x -> x.isEditable && x.isVisibleToUser } }
-            ?: return false
-        var target: AccessibilityNodeInfo = n
-        if (!n.isEditable) findNode(n) { it.isEditable }?.let { target = it }
-        target.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-        target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    private fun setText(n: AccessibilityNodeInfo, text: String): Boolean {
         val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
-        return target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        if (n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return true
+        // fallback: paste from clipboard
+        return try {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("mitra", text))
+            n.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+        } catch (e: Exception) { false }
+    }
+
+    private fun focusedEditable(): AccessibilityNodeInfo? {
+        val root = rootInActiveWindow ?: return null
+        val f = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (f != null && f.isEditable) return f
+        return findNode(root) { it.isEditable && it.isVisibleToUser && it.isFocused }
+            ?: findNode(root) { it.isEditable && it.isVisibleToUser }
+    }
+
+    /**
+     * Types into element [id] (or the focused box). Handles fake search boxes (Chrome, YouTube,
+     * Play Store) that only become real text fields after a tap.
+     */
+    suspend fun typeId(id: Int, text: String): Boolean {
+        val n = if (id >= 0) node(id) else null
+        if (n == null) {
+            val f = focusedEditable() ?: return false
+            return setText(f, text)
+        }
+        val inner = if (n.isEditable) n else findNode(n) { it.isEditable }
+        if (inner != null) {
+            inner.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            if (!inner.isFocused) inner.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (setText(inner, text)) return true
+        }
+        // not a real text field yet: tap it, wait for the real box to appear, then type there
+        if (!clickNode(n)) {
+            val r = Rect(); n.getBoundsInScreen(r)
+            gesture(r.exactCenterX(), r.exactCenterY(), r.exactCenterX(), r.exactCenterY(), 60)
+        }
+        repeat(6) {
+            kotlinx.coroutines.delay(400)
+            focusedEditable()?.let { if (setText(it, text)) return true }
+        }
+        return false
+    }
+
+    fun typeText(text: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        if (Safety.isBlockedPackage(root.packageName?.toString())) return false
+        val node = focusedEditable() ?: return false
+        return setText(node, text)
     }
 
     /** Presses the keyboard's Enter/Search/Go key on the focused box. */
