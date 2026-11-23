@@ -37,7 +37,7 @@ class BrowserActivity : ComponentActivity() {
     lateinit var web: WebView
     private lateinit var urlBar: EditText
     private lateinit var status: TextView
-    private lateinit var progress: ProgressBar
+    private lateinit var progressBar: ProgressBar
     private var fileCb: ValueCallback<Array<Uri>>? = null
 
     private val pick = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
@@ -69,7 +69,7 @@ class BrowserActivity : ComponentActivity() {
         bar.addView(urlBar, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         bar.addView(btn("⟳") { web.reload() })
         bar.addView(btn("✕") { finish() })
-        progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; visibility = View.GONE }
+        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; visibility = View.GONE }
         status = TextView(this).apply {
             setBackgroundColor(Color.parseColor("#FFF4C2")); setTextColor(Color.parseColor("#4A3B00")); textSize = 14f
             setPadding(dp(12), dp(6), dp(12), dp(6)); visibility = View.GONE
@@ -98,7 +98,7 @@ class BrowserActivity : ComponentActivity() {
             }
             webChromeClient = object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView, p: Int) {
-                    progress.progress = p; progress.visibility = if (p in 1..99) View.VISIBLE else View.GONE
+                    this@BrowserActivity.progressBar.progress = p; this@BrowserActivity.progressBar.visibility = if (p in 1..99) View.VISIBLE else View.GONE
                 }
                 override fun onShowFileChooser(v: WebView, cb: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
                     fileCb?.onReceiveValue(null); fileCb = cb
@@ -123,7 +123,7 @@ class BrowserActivity : ComponentActivity() {
         }
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
-        root.addView(bar); root.addView(progress, LinearLayout.LayoutParams(-1, dp(3))); root.addView(status)
+        root.addView(bar); root.addView(progressBar, LinearLayout.LayoutParams(-1, dp(3))); root.addView(status)
         root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
