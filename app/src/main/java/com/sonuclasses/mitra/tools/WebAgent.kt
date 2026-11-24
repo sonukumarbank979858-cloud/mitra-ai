@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Base64
 import com.sonuclasses.mitra.core.Gemini
+import com.sonuclasses.mitra.core.PasswordVault
 import com.sonuclasses.mitra.ui.BrowserActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -45,9 +46,11 @@ action इनमें से एक:
 - back: पिछला पेज
 - wait: पेज लोड होने दो
 - done: काम पूरा — say में हिंदी में 1-3 छोटे वाक्य: क्या किया, और अगर यूज़र ने कुछ पढ़ने/ढूँढने को कहा था तो पेज से उसका जवाब
+- secure_input: id वाले पासवर्ड / OTP / कैप्चा बॉक्स के लिए यूज़र के फ़ोन पर "सुरक्षित फ़ॉर्म" खोलो। text में सिर्फ़ प्रकार: password, otp या captcha; say में छोटा लेबल (जैसे "SSC लॉगिन का पासवर्ड")। यूज़र खुद मान डालेगा और वह सीधे बॉक्स में भर जाएगा — तुम्हें मान कभी नहीं दिखेगा (पेज पर *** दिखेगा)।
 - need_user: यूज़र से कुछ पूछना/पुष्टि लेनी है — say में साफ़ सवाल
 नियम:
-1. कभी पेमेंट, UPI, कार्ड, बैंक, OTP, पासवर्ड, कैप्चा भरना या अकाउंट डिलीट नहीं। ऐसा आए तो need_user (कहो कि यह हिस्सा यूज़र खुद ब्राउज़र में भर दें, फिर बताएँ)।
+1. पासवर्ड, OTP या कैप्चा वाला बॉक्स आए तो हमेशा secure_input (उस बॉक्स के id और सही प्रकार के साथ); उन्हें कभी type मत करो, goal में या यूज़र से बातचीत में उनका मान मत माँगो। कैप्चा बॉक्स = तस्वीर के अक्षर/गणित वाला खाना। OTP भेजने का बटन ("Send OTP"/"OTP भेजें") ज़रूरत हो तो पहले tap करो, फिर OTP बॉक्स पर secure_input। "मैं रोबोट नहीं हूँ" (reCAPTCHA/hCaptcha) वाला चेकबॉक्स/पज़ल तुम मत छुओ — need_user से कहो कि यूज़र खुद ब्राउज़र में उस पर टैप करके हल करें, फिर बताएँ।
+1क. पेमेंट, UPI, कार्ड, बैंक, नेट-बैंकिंग या वॉलेट से जुड़ा कुछ भी कभी नहीं भरना/दबाना, और अकाउंट डिलीट नहीं — ऐसा आए तो need_user (कहो कि यह हिस्सा यूज़र खुद ब्राउज़र में पूरा करें)। कार्ड नंबर, CVV, UPI PIN के लिए secure_input भी नहीं।
 2. फ़ॉर्म में जो जानकारी goal या "यूज़र के बारे में" में नहीं है उसे गढ़ो मत — need_user से एक बार में सारी कमी वाली जानकारी पूछो।
 3. आख़िरी Submit / जमा करें / Register / Apply / Send / Pay जैसा बटन दबाने से पहले, confirmed=false हो तो need_user से पूछो और भरी हुई जानकारी छोटे में बताओ। confirmed=true हो तो दबा दो।
 4. सर्च करना, लिंक खोलना, पढ़ना, फ़ॉर्म के खाने भरना — इनमें पुष्टि नहीं चाहिए।
@@ -86,7 +89,7 @@ action इनमें से एक:
      if(ty=='checkbox'||ty=='radio') line+=ty+' "'+lab(e)+'"'+(e.checked?' ✔':'');
      else if(ty=='submit'||ty=='button') line+='button "'+clean(e.value||lab(e)).slice(0,60)+'"';
      else if(ty=='file') line+='file-upload "'+lab(e)+'"';
-     else line+=(tag=='textarea'?'textarea':'input type='+(ty||'text'))+' "'+lab(e)+'" value="'+(ty=='password'?'***':clean(e.value).slice(0,40))+'"';
+     else line+=(tag=='textarea'?'textarea':'input type='+(ty||'text'))+' "'+lab(e)+'" value="'+((ty=='password'||e.hasAttribute('data-mitra-secure'))?'***':clean(e.value).slice(0,40))+'"';
      if(e.required) line+=' *ज़रूरी';
      if(e.disabled) line+=' (बंद)';
    } else if(tag=='select'){
@@ -94,7 +97,7 @@ action इनमें से एक:
      line+='select "'+lab(e)+'" चुना="'+clean(e.options[e.selectedIndex]?e.options[e.selectedIndex].text:'')+'" विकल्प: '+o.join(' | ');
      if(e.required) line+=' *ज़रूरी';
    } else if(e.isContentEditable){
-     line+='textbox "'+lab(e)+'" value="'+clean(e.innerText).slice(0,40)+'"';
+     line+='textbox "'+lab(e)+'" value="'+(e.hasAttribute('data-mitra-secure')?'***':clean(e.innerText).slice(0,40))+'"';
    } else {
      var t=clean(e.innerText||e.getAttribute('aria-label')||e.getAttribute('title')||'');
      if(!t){var im=e.querySelector('img[alt]'); if(im) t=clean(im.alt);}
@@ -104,7 +107,8 @@ action इनमें से एक:
    out.push(line+pos); n++;
  }
  var txt=clean(document.body?document.body.innerText:'').slice(0,2500);
- return JSON.stringify({url:location.href,title:document.title,text:txt,items:out});
+ var cw=!!document.querySelector('iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="turnstile"],.g-recaptcha,.h-captcha,.cf-turnstile');
+ return JSON.stringify({url:location.href,title:document.title,text:txt,items:out,captchaWidget:cw});
  }catch(err){return JSON.stringify({url:location.href,title:document.title,text:'',items:[],error:String(err)});}
 })()
 """
@@ -134,6 +138,70 @@ action इनमें से एक:
             else -> "return 'unknown';"
         }
         return "(function(){ try{ $body }catch(err){ return 'error:'+err; } })()"
+    }
+
+    /** Finds the captcha picture next to box [id], scrolls it into view and marks it data-mitra-cap. */
+    private fun capFindJs(id: Int) = """(function(){try{
+ document.querySelectorAll('[data-mitra-cap]').forEach(function(x){x.removeAttribute('data-mitra-cap')});
+ var e=document.querySelector('[data-mitra="$id"]');
+ var widget=!!document.querySelector('iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="turnstile"],.g-recaptcha,.h-captcha,.cf-turnstile');
+ if(!e) return JSON.stringify({missing:true,widget:widget});
+ var a=e.getBoundingClientRect(), best=null, bs=1e9;
+ [].slice.call(document.querySelectorAll('img,canvas,svg')).forEach(function(x){
+   var b=x.getBoundingClientRect(); if(b.width<30||b.height<12||b.width>700||b.height>300) return;
+   var cls=x.className&&x.className.baseVal!==undefined?x.className.baseVal:(x.className||'');
+   var s=((x.id||'')+' '+cls+' '+(x.getAttribute('src')||'')+' '+(x.getAttribute('alt')||'')+' '+(x.getAttribute('title')||'')).toLowerCase();
+   var d=Math.hypot((a.left+a.right)/2-(b.left+b.right)/2,(a.top+a.bottom)/2-(b.top+b.bottom)/2);
+   var sc=(/captcha|captch|verif|security|code/.test(s)?0:600)+d;
+   if(sc<bs){bs=sc;best=x;}
+ });
+ if(best&&bs<900){best.setAttribute('data-mitra-cap','1'); best.scrollIntoView({block:'center'}); return JSON.stringify({found:true,widget:widget});}
+ e.scrollIntoView({block:'center'}); return JSON.stringify({found:false,widget:widget});
+}catch(err){return JSON.stringify({found:false,widget:false});}})()"""
+
+    private const val CAP_RECT_JS = """(function(){try{
+ var x=document.querySelector('[data-mitra-cap]'); if(!x) return '{}';
+ var r=x.getBoundingClientRect(), vv=window.visualViewport, s=vv?vv.scale:1, ox=vv?vv.offsetLeft:0, oy=vv?vv.offsetTop:0;
+ return JSON.stringify({x:r.left-ox,y:r.top-oy,w:r.width,h:r.height,k:s*(window.devicePixelRatio||1)});
+}catch(err){return '{}';}})()"""
+
+    private suspend fun captchaImage(b: BrowserActivity): android.graphics.Bitmap? {
+        delay(400)
+        val r = try { JSONObject(eval(b, CAP_RECT_JS)) } catch (e: Exception) { return null }
+        if (!r.has("w")) return null
+        val k = r.optDouble("k", 1.0); val p = 4
+        return withContext(Dispatchers.Main) {
+            b.cropView((r.optDouble("x") * k).toInt() - p, (r.optDouble("y") * k).toInt() - p,
+                (r.optDouble("w") * k).toInt() + 2 * p, (r.optDouble("h") * k).toInt() + 2 * p)
+        }
+    }
+
+    /** Result codes: auto, filled, filled_saved, missing, cancelled, widget, timeout. The value never comes back here. */
+    private suspend fun secureInput(b: BrowserActivity, id: Int, kind: String, label: String, host: String, autoTried: MutableSet<String>): String {
+        if (kind == "password" && host.isNotBlank() && autoTried.add(host)) {
+            val saved = PasswordVault.get(host)
+            if (saved != null) {
+                val ok = withContext(Dispatchers.Main) { suspendCancellableCoroutine<Boolean> { c -> b.fillSecure(id, kind, saved) { if (c.isActive) c.resume(it) } } }
+                if (ok) return "auto"
+            }
+        }
+        var img: android.graphics.Bitmap? = null
+        if (kind == "captcha") {
+            val f = try { JSONObject(eval(b, capFindJs(id))) } catch (e: Exception) { JSONObject() }
+            if (f.optBoolean("missing")) return if (f.optBoolean("widget")) "widget" else "missing"
+            if (f.optBoolean("found")) img = captchaImage(b)
+            if (img == null && f.optBoolean("widget")) return "widget"
+        }
+        withContext(Dispatchers.Main) { b.setStatus("🔒 सुरक्षित फ़ॉर्म में भरें — यह मान मित्र/Gemini को नहीं जाता") }
+        val res = withTimeoutOrNull(150_000) {
+            withContext(Dispatchers.Main) {
+                suspendCancellableCoroutine<String> { c ->
+                    b.showSecureForm(id, kind, label, host, img) { code -> if (c.isActive) c.resume(code) }
+                }
+            }
+        }
+        if (res == null) withContext(Dispatchers.Main) { b.dismissSecureForm() }
+        return res ?: "timeout"
     }
 
     private suspend fun eval(b: BrowserActivity, js: String): String = withContext(Dispatchers.Main) {
@@ -181,6 +249,7 @@ action इनमें से एक:
         try {
             waitLoaded()
             val history = ArrayList<String>()
+            val autoTried = HashSet<String>()
             var lastSig = ""
             var same = 0
             for (step in 1..MAX_STEPS) {
@@ -205,6 +274,7 @@ action इनमें से एक:
                     append("पेज: ").append(pageUrl).append(" — ").append(snap.optString("title")).append('\n')
                     if (history.isNotEmpty()) append("अब तक के कदम:\n").append(history.takeLast(10).joinToString("\n")).append('\n')
                     if (same >= 2) append("ध्यान दो: पिछले कदमों से पेज नहीं बदला, दूसरा तरीका आज़माओ।\n")
+                    if (snap.optBoolean("captchaWidget")) append("पेज पर reCAPTCHA/hCaptcha ('मैं रोबोट नहीं हूँ') है — उसे यूज़र खुद हल करेंगे।\n")
                     append("पेज का टेक्स्ट:\n").append(snap.optString("text").ifBlank { "(खाली — शायद लोड हो रहा है)" }).append('\n')
                     append("तत्व:\n").append(list.ifBlank { "(कोई नहीं)" })
                 }
@@ -231,6 +301,31 @@ action इनमें से एक:
                     "need_user" -> return JSONObject().put("status", "needs_confirmation")
                         .put("message", "ब्राउज़र में रुका हूँ। यूज़र से पूछो: $say — जवाब मिलने पर web_task को url खाली छोड़कर, वही goal (जवाब जोड़कर) और ज़रूरत हो तो confirmed=true के साथ दोबारा बुलाओ; पेज वहीं से आगे चलेगा।")
                 }
+                if (action == "secure_input") {
+                    val kind = (text.ifBlank { a.optString("kind") }).lowercase().let {
+                        when { it.contains("otp") -> "otp"; it.contains("captcha") || it.contains("कैप्चा") -> "captcha"; else -> "password" }
+                    }
+                    val what = when (kind) { "otp" -> "OTP"; "captcha" -> "कैप्चा"; else -> "पासवर्ड" }
+                    if (blocked(pageUrl)) return JSONObject().put("status", "needs_confirmation").put("message", "यह पेमेंट या बैंक का पेज है, मित्र यहाँ कुछ नहीं भरता।")
+                    val host = try { android.net.Uri.parse(pageUrl).host ?: "" } catch (e: Exception) { "" }
+                    val code = secureInput(b, id, kind, say, host, autoTried)
+                    val note = when (code) {
+                        "auto" -> "सेव पासवर्ड भरा गया"
+                        "filled" -> "$what भरा गया"
+                        "filled_saved" -> "$what भरा गया (इस साइट के लिए याद रखा)"
+                        "missing" -> "नहीं हुआ (बॉक्स नहीं मिला — सही id देखो)"
+                        "widget" -> return JSONObject().put("status", "needs_confirmation").put("message",
+                            "पेज पर 'मैं रोबोट नहीं हूँ' वाला कैप्चा है। यूज़र से कहो कि ब्राउज़र में खुद उस पर टैप करके पज़ल हल करें, फिर बताएँ — तब web_task को url खाली छोड़कर वही goal देकर दोबारा बुलाना।")
+                        "timeout" -> return JSONObject().put("status", "needs_confirmation").put("message",
+                            "सुरक्षित फ़ॉर्म में $what नहीं भरा गया (समय निकल गया)। यूज़र से पूछो कि तैयार हों तो बताएँ, फिर web_task को url खाली छोड़कर वही goal देकर दोबारा बुलाना।")
+                        else -> return JSONObject().put("status", "needs_confirmation").put("message",
+                            "यूज़र ने सुरक्षित फ़ॉर्म रद्द कर दिया। पूछो कि आगे बढ़ना है या नहीं; हाँ कहें तो web_task को url खाली छोड़कर वही goal देकर दोबारा बुलाना। $what कभी बातचीत में मत माँगना।")
+                    }
+                    history.add("$step. secure_input [$id] $kind → $note")
+                    withContext(Dispatchers.Main) { b.setStatus("🤖 मित्र काम कर रहा है…") }
+                    delay(400)
+                    continue
+                }
                 withContext(Dispatchers.Main) { b.setStatus("🤖 मित्र: ${a.optString("thought").take(70)}") }
                 val res = when (action) {
                     "open" -> if (blocked(text)) "blocked" else { withContext(Dispatchers.Main) { b.load(text) }; "ok" }
@@ -241,7 +336,7 @@ action इनमें से एक:
                 }
                 val note = when {
                     res == "ok" -> "हुआ"
-                    res == "password" -> "नहीं हुआ (पासवर्ड मित्र नहीं भरता — need_user)"
+                    res == "password" -> "नहीं हुआ (पासवर्ड बॉक्स में type नहीं — secure_input password इस्तेमाल करो)"
                     res == "blocked" -> "नहीं हुआ (पेमेंट/बैंक साइट)"
                     else -> "नहीं हुआ ($res)"
                 }

@@ -65,6 +65,7 @@ import com.sonuclasses.mitra.BuildConfig
 import com.sonuclasses.mitra.core.Assistant
 import com.sonuclasses.mitra.core.Gemini
 import com.sonuclasses.mitra.core.LiveSession
+import com.sonuclasses.mitra.core.PasswordVault
 import com.sonuclasses.mitra.core.Prefs
 import com.sonuclasses.mitra.service.MitraAccessibilityService
 import kotlinx.coroutines.launch
@@ -296,11 +297,16 @@ fun SettingsScreen(go: (Screen) -> Unit, ensureService: () -> Unit) {
                 NavRow("🧠 स्मृति (याद रखी बातें)") { go(Screen.MEMORY) }
                 NavRow("🛡 अनुमतियाँ") { go(Screen.PERMS) }
                 NavRow("🗑 बातचीत साफ़ करें") { Assistant.clearChat(); Toast.makeText(ctx, "साफ़ हो गया", Toast.LENGTH_SHORT).show() }
+                var savedPw by remember(ver) { mutableStateOf(PasswordVault.count()) }
+                NavRow("🔐 सेव पासवर्ड मिटाएँ" + if (savedPw > 0) " ($savedPw साइट)" else "") {
+                    PasswordVault.clearAll(); savedPw = 0
+                    Toast.makeText(ctx, "सभी सेव पासवर्ड मिटा दिए", Toast.LENGTH_SHORT).show()
+                }
             }
             SectionCard {
                 Text("ℹ️ ऐप के बारे में", color = MC.Text, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 Text("मित्र AI v${BuildConfig.VERSION_NAME}\nLive मॉडल: ${Prefs.lastLiveModel.ifEmpty { LiveSession.MODELS.first() + " (पहली कोशिश)" }}\n" +
-                    "चैट मॉडल: ${Gemini.TEXT_MODELS.first()}\n\nमित्र आपकी पुष्टि के बिना कॉल या मैसेज नहीं भेजता, और पेमेंट/बैंकिंग ऐप्स को कभी नहीं छूता। " +
+                    "चैट मॉडल: ${Gemini.TEXT_MODELS.first()}\n\nमित्र आपकी पुष्टि के बिना कॉल या मैसेज नहीं भेजता, और पेमेंट/बैंकिंग ऐप्स को कभी नहीं छूता। पासवर्ड, OTP और कैप्चा आप सुरक्षित फ़ॉर्म में भरते हैं — वे Gemini को नहीं भेजे जाते (कैप्चा की तस्वीर सिर्फ़ 'मित्र पढ़े' दबाने पर)। " +
                     "आपकी बातें Google Gemini API पर प्रोसेस होती हैं।", color = MC.Sub, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
             }
             Spacer(Modifier.height(20.dp))
